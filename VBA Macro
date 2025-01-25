@@ -1,0 +1,132 @@
+Sub CompareTables()
+    Dim ws1 As Worksheet, ws2 As Worksheet, wsOutput As Worksheet
+    Dim table1 As ListObject, table2 As ListObject
+    Dim lastRow1 As Long, lastRow2 As Long, lastCol As Long
+    Dim outputRow As Long, missingRowOutputStart As Long
+    Dim i As Long, j As Long, k As Long
+    Dim cell1 As Range, cell2 As Range
+    Dim cellContent1 As String, cellContent2 As String
+    Dim approxMatch As Boolean, mismatch As Boolean
+    Dim missingRows As Collection
+    
+    ' Set the worksheets
+    Set ws1 = ThisWorkbook.Sheets("Sheet1")
+    Set ws2 = ThisWorkbook.Sheets("Sheet2")
+    Set wsOutput = ThisWorkbook.ActiveSheet ' Assuming the macro is run from the active sheet (Sheet3)
+    
+    ' Set tables
+    Set table1 = ws1.ListObjects(1)
+    Set table2 = ws2.ListObjects(1)
+    
+    ' Determine the last row and column of the tables
+    lastRow1 = table1.ListRows.Count
+    lastRow2 = table2.ListRows.Count
+    lastCol = table1.ListColumns.Count
+    
+    ' Initialize output row and collection for missing rows
+    outputRow = 15
+    Set missingRows = New Collection
+    
+    ' Clear previous formatting and output
+    ws1.Cells.Interior.ColorIndex = xlNone
+    ws2.Cells.Interior.ColorIndex = xlNone
+    wsOutput.Range("A15:Z1000").Clear
+    wsOutput.Range("A15:Z1000").Interior.ColorIndex = xlNone
+    
+    ' Compare each cell
+    For i = 1 To Application.Max(lastRow1, lastRow2)
+        approxMatch = False
+        mismatch = False
+        
+        If i <= lastRow1 And i <= lastRow2 Then
+            For j = 1 To lastCol
+                Set cell1 = table1.DataBodyRange.Cells(i, j)
+                Set cell2 = table2.DataBodyRange.Cells(i, j)
+                
+                If IsEmpty(cell1.Value) Or IsEmpty(cell2.Value) Then
+                    mismatch = True ' Treat empty cells as mismatch
+                    cell1.Interior.Color = RGB(255, 0, 0) ' Red
+                    cell2.Interior.Color = RGB(255, 0, 0) ' Red
+                Else
+                    cellContent1 = cell1.Text
+                    cellContent2 = cell2.Text
+                    
+                    If cellContent1 = cellContent2 Then
+                        ' Exact match, do nothing
+                    ElseIf cellContent1 Like cellContent2 & "*" Or cellContent2 Like cellContent1 & "*" Then
+                        ' Approximate match
+                        approxMatch = True
+                        cell1.Interior.Color = RGB(255, 255, 0) ' Yellow
+                        cell2.Interior.Color = RGB(255, 255, 0) ' Yellow
+                    Else
+                        ' Mismatch
+                        mismatch = True
+                        cell1.Interior.Color = RGB(255, 0, 0) ' Red
+                        cell2.Interior.Color = RGB(255, 0, 0) ' Red
+                    End If
+                End If
+            Next j
+            
+            ' Print the entire row if there's any approximate match or mismatch
+            If approxMatch Or mismatch Then
+                wsOutput.Cells(outputRow, 1).Value = table1.DataBodyRange.Cells(i, 1).Row ' Print row number
+                wsOutput.Cells(outputRow, 1).HorizontalAlignment = xlCenter ' Center align the row number
+                For j = 1 To lastCol
+                    wsOutput.Cells(outputRow, j + 1).Value = table1.DataBodyRange.Cells(i, j).Text
+                    ' Apply the same formatting to the output row
+                    Select Case table1.DataBodyRange.Cells(i, j).Interior.Color
+                        Case RGB(255, 255, 0) ' Yellow
+                            wsOutput.Cells(outputRow, j + 1).Interior.Color = RGB(255, 255, 0)
+                        Case RGB(255, 0, 0) ' Red
+                            wsOutput.Cells(outputRow, j + 1).Interior.Color = RGB(255, 0, 0)
+                    End Select
+                Next j
+                wsOutput.Range(wsOutput.Cells(outputRow, 1), wsOutput.Cells(outputRow, lastCol + 1)).Borders.LineStyle = xlContinuous ' Add all borders
+                outputRow = outputRow + 1
+            End If
+        ElseIf i <= lastRow1 Then
+            ' Row exists in Sheet1 but not in Sheet2
+            missingRows.Add Array(i, "Sheet1", "Sheet2")
+        ElseIf i <= lastRow2 Then
+            ' Row exists in Sheet2 but not in Sheet1
+            missingRows.Add Array(i, "Sheet2", "Sheet1")
+        End If
+    Next i
+    
+    ' Output missing rows
+    missingRowOutputStart = outputRow + 2
+    If missingRows.Count > 0 Then
+        wsOutput.Cells(missingRowOutputStart - 1, 1).Value = "MISSING ROWS:"
+        wsOutput.Cells(missingRowOutputStart - 1, 1).Font.Bold = True
+        
+        For k = 1 To missingRows.Count
+            Dim missingRowInfo As Variant
+            missingRowInfo = missingRows(k)
+            
+            wsOutput.Cells(missingRowOutputStart + k - 1, 1).Value = missingRowInfo(0) ' Row number
+            wsOutput.Cells(missingRowOutputStart + k - 1, 1).HorizontalAlignment = xlCenter
+            
+            ' Add comment
+            If wsOutput.Cells(missingRowOutputStart + k - 1, 1).Comment Is Nothing Then
+                wsOutput.Cells(missingRowOutputStart + k - 1, 1).AddComment
+            End If
+            wsOutput.Cells(missingRowOutputStart + k - 1, 1).Comment.Text "Present in " & missingRowInfo(1) & ", Missing in " & missingRowInfo(2)
+            
+            ' Copy row data
+            If missingRowInfo(1) = "Sheet1" Then
+                For j = 1 To lastCol
+                    wsOutput.Cells(missingRowOutputStart + k - 1, j + 1).Value = table1.DataBodyRange.Cells(missingRowInfo(0), j).Text
+                Next j
+            Else
+                For j = 1 To lastCol
+                    wsOutput.Cells(missingRowOutputStart + k - 1, j + 1).Value = table2.DataBodyRange.Cells(missingRowInfo(0), j).Text
+                Next j
+            End If
+            
+            ' Add borders
+            wsOutput.Range(wsOutput.Cells(missingRowOutputStart + k - 1, 1), wsOutput.Cells(missingRowOutputStart + k - 1, lastCol + 1)).Borders.LineStyle = xlContinuous
+        Next k
+    Else
+        wsOutput.Cells(missingRowOutputStart, 1).Value = ""
+    End If
+End Sub
