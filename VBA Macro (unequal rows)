@@ -1,0 +1,90 @@
+Sub Reconciliation()
+    Dim ws1 As Worksheet, ws2 As Worksheet, wsRecon As Worksheet
+    Dim lastRow1 As Long, lastRow2 As Long, lastCol As Long, lastCol2 As Long
+    Dim i As Long, j As Long, rowCounter As Long
+    Dim lastRowRecon As Long
+    
+    ' Set your worksheets
+    Set ws1 = ThisWorkbook.Sheets(1)
+    Set ws2 = ThisWorkbook.Sheets(2)
+    
+    ' Step 1: Clear all cell formatting in both sheets
+    ws1.Cells.ClearFormats
+    ws2.Cells.ClearFormats
+    
+    ' Step 2: Apply TRIM and PROPER functions to all cells in both sheets
+    lastRow1 = ws1.Cells(ws1.Rows.Count, 1).End(xlUp).Row
+    lastRow2 = ws2.Cells(ws2.Rows.Count, 1).End(xlUp).Row
+    lastCol = ws1.Cells(1, ws1.Columns.Count).End(xlToLeft).Column
+    lastCol2 = ws2.Cells(1, ws2.Columns.Count).End(xlToLeft).Column
+    
+    For i = 1 To lastRow1
+        For j = 1 To lastCol
+            ws1.Cells(i, j).Value = WorksheetFunction.Trim(WorksheetFunction.Proper(ws1.Cells(i, j).Value))
+        Next j
+    Next i
+    
+    For i = 1 To lastRow2
+        For j = 1 To lastCol2
+            ws2.Cells(i, j).Value = WorksheetFunction.Trim(WorksheetFunction.Proper(ws2.Cells(i, j).Value))
+        Next j
+    Next i
+    
+    ' Check if the "RECONCILIATION" sheet already exists and delete it if it does
+    On Error Resume Next
+    Set wsRecon = ThisWorkbook.Sheets("RECONCILIATION")
+    If Not wsRecon Is Nothing Then
+        Application.DisplayAlerts = False
+        wsRecon.Delete
+        Application.DisplayAlerts = True
+    End If
+    On Error GoTo 0
+    
+    ' Step 4: Create a new "RECONCILIATION" sheet and combine data
+    Set wsRecon = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+    wsRecon.Name = "RECONCILIATION"
+    
+    ' Copy data from ws1 and ws2 to wsRecon
+    ws1.Rows(1).Copy Destination:=wsRecon.Rows(1)
+    ws1.Rows("2:" & lastRow1).Copy Destination:=wsRecon.Rows(2)
+    ws2.Rows("2:" & lastRow2).Copy Destination:=wsRecon.Rows(lastRow1 + 1)
+    
+    ' Step 6: Append two new columns "Sheet" and "Row No"
+    lastRowRecon = wsRecon.Cells(wsRecon.Rows.Count, 1).End(xlUp).Row
+    wsRecon.Cells(1, lastCol + 1).Value = "Sheet"
+    wsRecon.Cells(1, lastCol + 2).Value = "Row No"
+    
+    ' Fill the "Sheet" and "Row No" columns
+    rowCounter = 2
+    For i = 2 To lastRow1
+        wsRecon.Cells(rowCounter, lastCol + 1).Value = ws1.Name
+        wsRecon.Cells(rowCounter, lastCol + 2).Value = i
+        rowCounter = rowCounter + 1
+    Next i
+    
+    For i = 2 To lastRow2
+        wsRecon.Cells(rowCounter, lastCol + 1).Value = ws2.Name
+        wsRecon.Cells(rowCounter, lastCol + 2).Value = i
+        rowCounter = rowCounter + 1
+    Next i
+    
+    ' Step 8: Format the data as a Table with the first row as the header
+    wsRecon.ListObjects.Add(xlSrcRange, wsRecon.Range("A1").CurrentRegion, , xlYes).Name = "ReconciliationTable"
+    wsRecon.ListObjects("ReconciliationTable").TableStyle = "TableStyleMedium15"
+    
+    ' Step 9: Sort the table by the first column in ascending order
+    With wsRecon.ListObjects("ReconciliationTable").Sort
+        .SortFields.Clear
+        .SortFields.Add Key:=wsRecon.Range("A1:A" & lastRowRecon), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:=xlSortNormal
+        .Header = xlYes
+        .Apply
+    End With
+    
+    ' Step 10: Identify duplicate values and highlight unique values
+    Dim cell As Range
+    For Each cell In wsRecon.ListObjects("ReconciliationTable").DataBodyRange
+        If WorksheetFunction.CountIf(wsRecon.ListObjects("ReconciliationTable").ListColumns(cell.Column).DataBodyRange, cell.Value) = 1 Then
+            cell.Interior.Color = RGB(255, 255, 0) ' Highlight unique values with yellow color
+        End If
+    Next cell
+End Sub
